@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-giJF6kkoqNQ00vy+HMDP7azOuL0xtbfIcaT9wjKHr8RbDVddVHyTfAAsrekwKmP1" crossorigin="anonymous">
+
+    <title>WumboDB Atlas</title>
+  </head>
+  <body>
+    <div class="container pt-3 pb-3 bg-light text-dark">
+        <h1>WumboDB Atlas</h1>
+        <p>WumboDB is connected to Discord, logged in as {{ user }} on server {{ server }}</p>
+    </div>
+
+    <div class="container pt-3">
+
+        <pre class="overflow-auto bg-dark text-light" style="margin-top: 10px; padding: 10px;">
+<code>{{loglines}}</code>
+        </pre>
+        
+        <form action="{{ url_for('database_action') }}" method="post" id="dbform">
+            <input type="radio" id="create" name="operation" value="create">
+            <label for="create">Create</label><br>
+            <input type="radio" id="read" name="operation" value="read">
+            <label for="read">Read</label><br>
+            <input type="radio" id="read" name="operation" value="update">
+            <label for="read">Update</label><br>
+            <input type="radio" id="delete" name="operation" value="delete">
+            <label for="delete">Delete</label><br>
+            
+
+            <label for="collection">Collection:</label><br>
+            <input type="text" id="collection" name="collection"><br>
+
+            <label for="identifier">Identifier (only needed for read/update/delete)</label><br>
+            <input type="text" id="identifier" name="identifier"><br>
+
+            <input type="submit" value="Submit">
+        </form>
+        <br>
+        <textarea name="content" form="dbform">Enter JSON document here...</textarea>
+
+    </div>
+
+    <!-- Bootstrap -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-ygbV9kiqUc6oa4msXn9868pTtWMgiQaeYH7/t7LECLbyPA2x65Kgf80OJFdroafW" crossorigin="anonymous"></script>
+
+  </body>
+</html>

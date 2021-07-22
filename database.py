@@ -70,14 +70,14 @@ class Database():
                             channel != self.control_channel}
         # Set up collection mapping
 
-    async def create_collection(self, name: str):
+    async def create_collection(self, name: str) -> None:
         '''
         Create a collection
         '''
         ch = await self.guild.create_text_channel(name)
         self.collections[ch.name] = ch
 
-    async def delete_collection(self, name: str):
+    async def delete_collection(self, name: str) -> None:
         '''
         Delete a collection
         '''
@@ -85,7 +85,7 @@ class Database():
         await channel.delete()
         del self.collections[name]
 
-    async def rename_collection(self, name: str, new_name: str):
+    async def rename_collection(self, name: str, new_name: str) -> None:
         '''
         Rename a collection
         '''
@@ -137,7 +137,7 @@ class Database():
         await msg.delete()
 
     async def update_document(self, collection: str,
-                              identifier: Union[int, dict], data: dict):
+                              identifier: Union[int, dict], data: dict) -> int:
         '''
         Updates document in a collection, by message ID or filter.
         '''
@@ -148,6 +148,7 @@ class Database():
             await self.collections[collection].history(limit=None).\
             find(DocIdent(identifier).finder)
         await msg.edit(content=f"```{json.dumps(data)}```")
+        return msg.id
 
     async def create_blob(self, collection: str,
                           data: io.BufferedIOBase) -> int:
