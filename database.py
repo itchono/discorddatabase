@@ -1,7 +1,9 @@
-import os
+import json
+import io
 import discord
 from discord.ext import commands
 from typing import Union
+import imghdr
 
 
 class DocIdent:
@@ -10,126 +12,180 @@ class DocIdent:
     def __init__(self, query):
         if type(query) == int:
             self.id: int = query
-            self.data = None
-        elif type(query) == str:
-            self.id: int = None
-            self.data: str = query
+            self.query = None
+        elif type(query) == dict:
+            self.id = None
+            self.query: dict = query
 
     @property
-    def searchterms(self):
-        # Used in discord.utils.get
-        if self.id:
-            # Always prefer ID
-            return {"id": self.id}
-        elif self.data:
-            return {"content": self.data}
-        else:
-            raise Exception
+    def finder(self):
+        # Used in discord.utils.find
+        def check(message: discord.Message):
+            if self.id:
+                # Always prefer ID
+                return message.id == self.id
+            elif self.query:
+                data: dict = json.loads(message.content[3:-3])
+                return data.items() <= self.query.items()
+                # Return true only if it's a strict subset
+            else:
+                raise Exception
+        return check
 
 
-class Database(commands.Cog):
+class Database():
     '''
     Core module of the discord database
     '''
     def __init__(self, bot: commands.Bot):
         self.bot: "commands.Bot" = bot
 
-        self.db_guild: "discord.Guild" = None
+        self.guild: "discord.Guild" = None
         self.control_channel: "discord.TextChannel" = None
         self.collections: "dict[str, discord.TextChannel]" = {}
+        print(f"WumboDB Starting... Waiting for connection to Discord.")
 
     async def startup(self, relay_id: int):
         '''
         Runs during startup to set up the databases
         Wait until bot is ready, and then load relay stuff
         '''
-        self.db_guild = self.bot.get_guild(relay_id)
+        self.guild = self.bot.get_guild(relay_id)
 
-        if self.db_guild:
-            print(f"Relay connected to server: {self.db_guild.name}")
+        if self.guild:
+            print(f"Wumbo Relay connected to server: {self.guild.name}")
         else:
-            print(f"Relay not connected! Attempted connection id: {relay_id}")
+            print(f"Wumbo Relay not connected! Attempted connection id: {relay_id}")
 
         if not (channel := discord.utils.get(
-                self.db_guild.text_channels, name="control")):
-            self.control_channel = await self.db_guild.create_text_channel(
+                self.guild.text_channels, name="control")):
+            self.control_channel = await self.guild.create_text_channel(
                                    "control")
-            print("Setting up server for database (first time init)")
+            print("Setting up server for WumboDB (first time init)")
         else:
             self.control_channel = channel
 
-        self.collections = {channel.name: channel for channel in self.db_guild.text_channels if channel != self.control_channel}
+        self.collections = {channel.name: channel for channel
+                            in self.guild.text_channels if
+                            channel != self.control_channel}
         # Set up collection mapping
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        await self.startup(int(os.environ.get("GUILD")))
-
-    @commands.group()
-    async def collection(self, ctx: commands.Context):
-        '''
-        Parent command for collections.
-        '''
-        if ctx.invoked_subcommand is None:
-            await ctx.send(f"Subcommands: `create`, `rename`, `delete`")
-
-    @collection.command(name="create")
-    async def createcollection(self, ctx: commands.Context, name: str):
+    async def create_collection(self, name: str):
         '''
         Create a collection
         '''
-        try:
-            ch = await self.db_guild.create_text_channel(name)
-            self.collections[ch.name] = ch
+        ch = await self.guild.create_text_channel(name)
+        self.collections[ch.name] = ch
 
-        except Exception as e:
-            await ctx.send(f"Error: {e}")
-
-    @collection.command(name="delete")
-    async def deletecollection(self, ctx: commands.Context, name: str):
+    async def delete_collection(self, name: str):
         '''
-        Create a collection
+        Delete a collection
         '''
-        try:
-            channel = discord.utils.get(self.db_guild.text_channels, name=name)
-            await channel.delete()
+        channel = discord.utils.get(self.guild.text_channels, name=name)
+        await channel.delete()
+        del self.collections[name]
 
-            del self.collections[name]
-
-        except Exception as e:
-            await ctx.send(f"Error: {e}")
-
-    @commands.command()
-    async def create(self, ctx: commands.Context, collection: str, *, data: str):
+    async def rename_collection(self, name: str, new_name: str):
         '''
-        Create a document in a collection
+        Rename a collection
         '''
-        if collection not in self.collections:
-            return
-        await self.collections[collection].send(data)
+        channel = discord.utils.get(self.guild.text_channels, name=name)
+        await channel.edit(name=new_name)
+        del self.collections[name]
 
-    @commands.command()
-    async def delete(self, ctx: commands.Context, collection: str, *, identifier: Union[int, str]):
+        ch = await self.bot.fetch_channel(channel.id)  # force refresh
+        self.collections[ch.name] = ch
+
+    async def create_document(self, collection: str, data: dict) -> int:
         '''
-        Deletes document in a collection
+        Create a document in a collection.
+        Returns: id of message
         '''
         if collection not in self.collections:
-            return
-        msg = await self.collections[collection].history().get(**DocIdent(identifier).searchterms)
-        if not msg:
-            await ctx.send("Not found")
+            raise ValueError(f"Collection {collection} does not exist.")
+
+        msg = await self.collections[collection].\
+            send(f"```{json.dumps(data)}```")
+        return msg.id
+
+    async def read_document(self, collection: str,
+                            identifier: Union[int, dict]) -> "tuple(int,dict)":
+        '''
+        Retrieves document, by message ID or filter.
+        Returns: Message ID, data.
+        '''
+        if collection not in self.collections:
+            raise ValueError(f"Collection {collection} does not exist.")
+
+        msg: discord.Message = \
+            await self.collections[collection].history(limit=None).\
+            find(DocIdent(identifier).finder)
+        data: dict = json.loads(msg.content[3:-3])
+        return msg.id, data
+
+    async def delete_document(self, collection: str,
+                              identifier: Union[int, dict]):
+        '''
+        Deletes document in a collection, by message ID or filter.
+        '''
+        if collection not in self.collections:
+            raise ValueError(f"Collection {collection} does not exist.")
+
+        msg: discord.Message = \
+            await self.collections[collection].history(limit=None).\
+            find(DocIdent(identifier).finder)
+        await msg.delete()
+
+    async def update_document(self, collection: str,
+                              identifier: Union[int, dict], data: dict):
+        '''
+        Updates document in a collection, by message ID or filter.
+        '''
+        if collection not in self.collections:
+            raise ValueError(f"Collection {collection} does not exist.")
+
+        msg: discord.Message = \
+            await self.collections[collection].history(limit=None).\
+            find(DocIdent(identifier).finder)
+        await msg.edit(content=f"```{json.dumps(data)}```")
+
+    async def create_blob(self, collection: str,
+                          data: io.BufferedIOBase) -> int:
+        '''
+        Create a blob (file) in a collection.
+        Returns: id of blob
+        '''
+        if collection not in self.collections:
+            raise ValueError(f"Collection {collection} does not exist.")
+
+        if ext := imghdr.what(data):
+            msg = await self.collections[collection].\
+                send(file=discord.File(data, "attachment." + ext))
         else:
-            await msg.delete()
+            msg = await self.collections[collection].\
+                send(file=discord.File(data, "attachment"))
 
-    @commands.command()
-    async def update(self, ctx: commands.Context, collection: str, identifier: Union[int, str], *, data: str):
+        return msg.id
+
+    async def read_blob(self, collection: str, id: int) -> str:
         '''
-        updates document in a collection
+        Retrieves document, by message ID.
+        Returns: URI to blob
         '''
         if collection not in self.collections:
-            return
-        msg = await self.collections[collection].history().get(**DocIdent(identifier).searchterms)
-        if not msg:
-            await ctx.send("Not found")
-        else:
-            await msg.edit(data)
+            raise ValueError(f"Collection {collection} does not exist.")
+
+        msg: discord.Message = \
+            await self.collections[collection].history(limit=None).get(id=id)
+        return msg.attachments[0].url
+
+    async def delete_blob(self, collection: str, id: int):
+        '''
+        Deletes blob in a collection, by message ID.
+        '''
+        if collection not in self.collections:
+            raise ValueError(f"Collection {collection} does not exist.")
+
+        msg: discord.Message = \
+            await self.collections[collection].history(limit=None).get(id=id)
+        await msg.delete()
