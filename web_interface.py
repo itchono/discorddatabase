@@ -3,6 +3,7 @@ import json
 from database import Database
 from discord_client import client as bot
 import pprint
+import traceback
 
 app = Quart('WumboDB')
 
@@ -64,7 +65,7 @@ async def database_action():
             lines = "Successful deletion."
 
     except Exception as e:
-        lines = "ERROR: " + str(e)
+        lines = "ERROR: " + str(e) + "\n" + "\n".join(traceback.format_tb(e.__traceback__))
 
     return await render_template("index.html", user=str(bot.user),
                                  server=db.guild.name, loglines=lines)

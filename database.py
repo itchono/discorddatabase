@@ -29,8 +29,8 @@ class DocIdent:
                     return False
 
                 data: dict = json.loads(message.content[3:-3])
-                return data.items() <= self.query.items()
-                # Return true only if it's a strict subset
+                return data.items() >= self.query.items()
+                # Return true only if it's a subset
             else:
                 raise Exception
         return check
@@ -123,6 +123,8 @@ class Database():
         msg: discord.Message = \
             await self.collections[collection].history(limit=None).\
             find(DocIdent(identifier).finder)
+        if not msg:
+            raise ValueError("No suitable documents found!")
         data: dict = json.loads(msg.content[3:-3])
         return msg.id, data
 
