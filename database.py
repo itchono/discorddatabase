@@ -25,6 +25,9 @@ class DocIdent:
                 # Always prefer ID
                 return message.id == self.id
             elif self.query:
+                if not message.content:
+                    return False
+
                 data: dict = json.loads(message.content[3:-3])
                 return data.items() <= self.query.items()
                 # Return true only if it's a strict subset
